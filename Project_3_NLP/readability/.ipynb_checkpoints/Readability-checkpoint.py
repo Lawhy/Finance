@@ -16,10 +16,6 @@
 
 # # Readability
 
-# ## Part 0. Packages and Data
-
-# ### 0.1: Import necessary packages
-
 import re
 import jieba
 import pandas as pd
@@ -28,29 +24,19 @@ import json
 from nltk.probability import *
 import math
 
-# ### 0.2: Read data
-#
-# #### （代码效果与sentiment analysis里的一样） 
-
-# Single input
-data_path = '请输入数据路径'  # e.g. data/record1.xls
-all_data = pd.read_excel(data_path)
-all_data.info()
-
-# Multiple inputs
+# Prepare Data
 all_data = pd.DataFrame()
 for i in range(17):
     i += 1
     path = "data/record" + str(i) + ".xls"
     all_data = all_data.append(pd.read_excel(path), sort=False)
-all_data.info()
-
 data = all_data[['文档号码','投资者关系活动主要内容介绍']]
 print('Before cleaning:')
 print(data.shape)
 data = data.dropna()
 print('After cleaning:')
 print(data.shape)
+print(data.head(10))
 
 
 # ## Part 1. Preprocessing
@@ -63,13 +49,11 @@ def clean(doc):
     return "".join(re.findall(pa, doc))
 
 
-# #### 以下两个cells只是可视化cleaning和分词的效果，可以忽略
-
-print(clean(data.iloc[0][1]))
+print(clean(data.iloc[10][1]))
 print("--------------")
-print(data.iloc[0][1])
+print(data.iloc[10][1])
 
-seg_list = jieba.cut(clean(data.iloc[0][1][0:500]), cut_all=False, HMM=True)
+seg_list = jieba.cut(clean(data.iloc[10][1][0:500]), cut_all=False, HMM=True)
 print("Default Mode: " + "/ ".join(seg_list))  # 默认模式
 
 
@@ -108,7 +92,7 @@ raw_process(data.iloc[0][1])
 
 # ### 1.3 Stop word list
 
-with open('../stop_words/中文停用词表.txt', 'r', encoding='UTF-8-sig') as f:
+with open('stop_words/中文停用词表.txt', 'r', encoding='UTF-8-sig') as f:
     stop_words = [ word.strip().replace('\n', '') for word in f.readlines()]
 symbols = stop_words[0:26]
 stop_words
@@ -148,7 +132,7 @@ gen_freq_dist(data.iloc[0][1])
 # (using common word list)
 
 ch_pa = re.compile(r'([\u4E00-\u9FA5])')
-with open('../common_words/常用词.txt', 'r', encoding='UTF-8-sig') as f:
+with open('common_words/常用词.txt', 'r', encoding='UTF-8-sig') as f:
     common_words = [ ''.join(re.findall(ch_pa, line)) for line in f.readlines()]
 print(len(common_words))
 print('为了' in common_words)
@@ -202,7 +186,7 @@ def grade_n_semester(doc):
         'common_words_percentage' : percent_common_words
     }
 
-grade_n_semester(data.iloc[0][1])
+grade_n_semester(data.iloc[30][1])
 
 
 # -
@@ -210,9 +194,7 @@ grade_n_semester(data.iloc[0][1])
 # ### 2.2 Fog value and its modified version 
 # (using the full frequency distribution (all_freq_dist) and the document frequency distribution (df_dist))
 
-# +
-# One-time block 
-# 建立一个完整的 frequency distribution，推荐只跑一次将数据储存以复用
+# One-time block
 def init_all_freq_dist():
     all_freq_dist = dict()
     count = 0
@@ -227,12 +209,8 @@ def init_all_freq_dist():
         count += 1
     return all_freq_dist
 
-all_freq_dist = init_all_freq_dist()
-with open('all_freq_dist.json', 'w+', encoding='UTF-8-sig') as f:
-    json.dump(all_freq_dist, f)
 
 # +
-# 如果前一个cell已经完整跑完一次，只需要跑这个cell就能拿到完整的 frequency distribution
 with open('all_freq_dist.json', 'r', encoding='UTF-8-sig') as f:
     all_freq_dist = json.load(f)
 
@@ -250,10 +228,7 @@ def is_complex(word, threshold=1):
     return all_freq_dist[word] <= threshold 
 
 
-# +
 # One-time block
-# 建立一个完整的 document frequency distribution，推荐只跑一次将数据储存以复用
-# df的定义在 10-K readability 那篇paper里
 def init_df_dist():
     df_dist = dict()
     count = 0
@@ -266,9 +241,6 @@ def init_df_dist():
         count += 1
     return df_dist
 
-df_dist = init_df_dist()
-with open('df_dist.json', 'w+', encoding='UTF-8-sig') as f:
-    json.dump(df_dist, f)
 
 # +
 with open('df_dist.json', 'r', encoding='UTF-8-sig') as f:
@@ -281,7 +253,6 @@ df_dist_df.describe()
 
 # -
 
-# 10-K readability paper 里定义的词比重
 def weight_of_word(word):
     global data, df_dist
     N = data.shape[0]
@@ -364,6 +335,6 @@ for index, d in data.iterrows():
         error_docs.append(doc_num)
         print('An error happened when processing document ' + str(doc_num))
 
-data[data['文档号码'].isin(error_docs)] #看还有没有无法处理的文件
+data[data['文档号码'].isin(error_docs)]
 
-all_scores.to_excel('readability/readability.xlsx', index=False) #储存最终结果
+all_scores.to_excel('readability/readability.xlsx', index=False)

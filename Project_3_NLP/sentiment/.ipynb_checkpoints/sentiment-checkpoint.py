@@ -17,14 +17,12 @@
 # # Sentiment Analysis
 # ### (using Baidu Brain's NLP tools)
 
-# ### Step 1: Import necessary pacakages
-
 from aip import AipNlp
 import numpy as np
 import pandas as pd
 import re
 
-# ### Step 2: 百度大脑使用授权 (如果失效可自行注册一个账号，按照官网的指示拿到以下三个值）
+#
 
 # +
 # Important setup for Baidu Brain's NLP
@@ -35,16 +33,12 @@ SECRET_KEY = "CfYjxNl4SMAkorMpXIhAclyIQ3nAzwE9"
 client = AipNlp(APP_ID, API_KEY, SECRET_KEY)
 # -
 
-# ### Step 3.1: 单一输入文件请用以下代码 （输入excel文件，尾缀是xls或者xlsx）
+# Testing excel files accessibility
+df = pd.read_excel('data/record1.xls')
+df = df.append(pd.read_excel('data/record2.xls'))
+df.head(10)
 
-# Single input
-data_path = '请输入数据路径'  # e.g. data/record1.xls
-all_data = pd.read_excel(data_path)
-all_data.info()
-
-# ### Step 3.2: 多文件输入（由于这次给的数据命名为 recordN.xls 的形式， N为1到17） 所以用一个for-loop 把所有数据读取）
-
-# Multiple inputs
+# Prepare Data
 all_data = pd.DataFrame()
 for i in range(17):
     i += 1
@@ -52,17 +46,14 @@ for i in range(17):
     all_data = all_data.append(pd.read_excel(path), sort=False)
 all_data.info()
 
-# ### Step 4: 只取数据中有用的列，并且去掉所有数据残缺的行, dropna()的功能就是去掉具有空值的行
-
-data = all_data[['文档号码','投资者关系活动主要内容介绍']] # 如果需要不同名字的列，请修改中括号里面的内容，以逗号分隔
+data = all_data[['文档号码','投资者关系活动主要内容介绍']]
 print('Before cleaning:')
 print(data.shape)
 data = data.dropna()
 print('After cleaning:')
 print(data.shape)
+print(data.head(10))
 
-
-# ### Step 5: Sentiment Analysis Method 封装
 
 # generate results for one document after cleaning
 def analyse(doc, doc_num):
@@ -94,9 +85,8 @@ def analyse(doc, doc_num):
     scores['negative_prob_c'] = sum([ (r_dict['negative_prob'] * r_dict['weight'] * r_dict['confidence']) for r_dict in results ])
     scores['sentiment_c'] = round(sum([ (r_dict['sentiment'] * r_dict['weight'] * r_dict['confidence']) for r_dict in results ]))
     return scores
+# analyse(sample, '1200573239')
 
-
-# ### Step 6: Sentiment Analysis 执行 （运行时间根据数据多少而定）
 
 all_scores = pd.DataFrame()
 error_docs = []
@@ -124,29 +114,24 @@ for index, d in data.iterrows():
         error_docs.append(str(doc_num))
         print('An error happened when processing document ' + str(doc_num))
 
-# ### Step 7: 结果储存
-# #### （Outputs有三种，其中sentiment.xlsx是算好的结果，error_docs.xlsx 和 empty_docs.xlsx 分别记录了无法处理的文件和空文件的文档号码）
+df_error_docs = pd.DataFrame(error_docs, columns=['文档编号'])
+df_error_docs.to_excel('error_docs.xlsx', index=False)
 
-all_scores.to_excel('sentiment.xlsx', index=False)
-pd.DataFrame(error_docs, columns=['文档号码']).to_excel('error_docs.xlsx', index=False)
-pd.DataFrame(empty_docs, columns=['文档号码']).to_excel('empty_docs.xlsx', index=False)
+all_scores.to_excel('sentiment/sentiment.xlsx', index=False)
 
+pd.DataFrame(empty_docs, columns=['文档编号']).to_excel('empty_docs.xlsx', index=False)
 
-# ### Step 8: 定义clean_error_doc方法来将无法完整分析的error_docs二次处理，只留下中文，数字和标点符号
 
 # process the error docs after second-level cleaning
 def clean_error_doc(error_doc):
-    chi = r'([\u4E00-\u9FA5]|[0-9]|[“”、。《》！，：；？\.%])'
+    chi = r'([\u4E00-\u9FA5，。：！《》？——、])'
     pa = re.compile(chi)
     return "".join(re.findall(pa, error_doc))
 
 
-# ### Step 9: 读取error_docs数据，再次执行情感分析，并且最终保存结果 
-# #### （不排除一小部分文件在cleaning之后还是无法处理，但通常情况是该文档不包含以上定义的有效字符，即：中文，数字和标点符号）
-
-error_doc_nums = pd.read_excel("error_docs.xlsx")
+error_doc_nums = pd.read_excel("sentiment/error_docs.xlsx")
 error_data = data[data['文档号码'].isin(error_doc_nums['文档编号'].tolist())]
-error_data.head(10)
+error_data
 
 rest_scores = pd.DataFrame()
 rest_error_docs = []
@@ -170,4 +155,4 @@ for index, d in error_data.iterrows():
         rest_error_docs.append(str(doc_num))
         print('An error happened when processing document ' + str(doc_num))
 
-rest_scores.to_excel('sentiment_rest.xlsx', index=False)
+rest_scores.to_excel('sentiment/sentiment2.xlsx', index=False)
