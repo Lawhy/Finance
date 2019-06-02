@@ -41,7 +41,7 @@ all_data.info()
 all_data = pd.DataFrame()
 for i in range(17):
     i += 1
-    path = "data/record" + str(i) + ".xls"
+    path = ".../data/record" + str(i) + ".xls"
     all_data = all_data.append(pd.read_excel(path), sort=False)
 all_data.info()
 
@@ -366,4 +366,6 @@ for index, d in data.iterrows():
 
 data[data['文档号码'].isin(error_docs)] #看还有没有无法处理的文件
 
-all_scores.to_excel('readability/readability.xlsx', index=False) #储存最终结果
+all_scores.to_excel('readability.xlsx', index=False) #储存最终结果
+
+# ### Note: 注意如果数据更换了 之前生成的all_freq_dist.json和df_freq_dist.json 要随着之前的结果一起被移除，以免产生误解！
