@@ -41,7 +41,7 @@ all_data.info()
 all_data = pd.DataFrame()
 for i in range(17):
     i += 1
-    path = ".../data/record" + str(i) + ".xls"
+    path = "../data/record" + str(i) + ".xls"
     all_data = all_data.append(pd.read_excel(path), sort=False)
 all_data.info()
 
@@ -56,7 +56,6 @@ print(data.shape)
 # ## Part 1. Preprocessing
 # ### 1.1 Cleaning
 
-# process the error docs after second-level cleaning
 def clean(doc):
     chi = r'([\u4E00-\u9FA5]|[0-9]|[“”、。《》！，：；？\.%])'
     pa = re.compile(chi)
