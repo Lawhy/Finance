@@ -1,7 +1,18 @@
 # -*- coding: utf-8 -*-
 import scrapy
 import pandas as pd
+import re
 
+
+# +
+def get_user(url):
+    pa = r'https://www.estimize.com/users/(.+)'
+    return re.findall(pa, url)
+
+get_user('https://www.estimize.com/users/zzztimbo')[0]
+
+
+# -
 
 class UserInfoSpider(scrapy.Spider):
     
@@ -21,7 +32,7 @@ class UserInfoSpider(scrapy.Spider):
     def parse(self, response):
         
         yield {
-            'username': response.xpath('//div[@class=\'profile-left-column\']/div[@class=\'profile-bio\']/p[@class=\'profile-username\']/a/text()').extract(),
+            'username': get_user(response.url),
             'status': response.xpath('//div[@class=\'profile-left-column\']/div[@class=\'profile-bio\']/ul[@class=\'profile-bio-categorizations\']/li/text()').extract(),
         }
 

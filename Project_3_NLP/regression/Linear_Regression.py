@@ -7,7 +7,7 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.4'
-#       jupytext_version: 1.1.3
+#       jupytext_version: 1.2.4
 #   kernelspec:
 #     display_name: Python 3
 #     language: python
@@ -51,13 +51,109 @@ for i in range(17):
 all_data.info()
 
 # 取出想要的数据并且去除空行
-wanted_columns = ['文档号码','投资者关系活动主要内容介绍']
+wanted_columns = ['文档号码','投资者关系活动主要内容介绍', '证券代码（请务必使用text格式 以保留代码中的0）', '日期（格式统一为xx/xx/xxxx（日月年））']
 data = all_data[wanted_columns]
 print('Before cleaning:')
 print(data.shape)
 data = data.dropna() # drop rows with null values
 print('After cleaning:')
 print(data.shape)
+
+# ### Merge Data by Cusip and Date
+
+data = data.rename(columns={"文档号码": "ID", "投资者关系活动主要内容介绍": "content", 
+                     "证券代码（请务必使用text格式 以保留代码中的0）": "cusip",
+                     "日期（格式统一为xx/xx/xxxx（日月年））": "date"})
+data.head(10)
+
+ref_data = pd.read_excel('ref_data.xlsx')
+ref_data.head(10)
+
+from datetime import datetime
+
+data = data.reset_index(drop=True)
+
+# 有部分的date格式不对，进行提前清理
+
+for i, dp in data.iterrows():
+    try:
+        str(dp['date'].strftime("%Y%m"))
+    except:
+        data.loc[i] = None
+
+data = data.dropna().reset_index(drop=True)
+
+data['date'] = data['date'].apply(lambda x: x.strftime("%Y%m"))
+
+data['date'] = data['date'].apply(lambda x: str(x))
+
+ref_data['cdt'] = ref_data['cdt'].apply(lambda x: str(x))
+
+np.sort(data['date'].unique())
+
+np.sort(ref_data['cdt'].unique())
+
+
+# 选取2012第一季度到2018第一季度的data并转换日期格式
+
+# +
+# year-month to year-season
+def yyyymm_to_yyyyss(yyyymm):
+    
+    assert len(yyyymm) == 6
+    yyyy = yyyymm[:4]
+    mm = yyyymm[-2:]
+    if mm == '01' or mm == '02' or mm == '03':
+        return yyyy + '01'
+    elif mm == '04' or mm == '05' or mm == '06':
+        return yyyy + '02'
+    elif mm == '07' or mm == '08' or mm == '09':
+        return yyyy + '03'
+    elif mm == '10' or mm == '11' or mm == '12':
+        return yyyy + '04'
+    else:
+        print('wrong month: {}'.format(mm))
+
+yyyymm_to_yyyyss('201513')    
+# -
+
+data['date'] = data['date'].apply(lambda x: yyyymm_to_yyyyss(x))
+
+np.sort(data['date'].unique())
+
+
+# +
+def keep_date(date):
+    yyyy = int(date[:4])
+    if 2012 <= yyyy and yyyy <= 2018:
+        return date
+    else:
+        return None
+    
+np.sort(data['date'].apply(lambda x: keep_date(x)).dropna().unique())
+# -
+
+data['date'] = data['date'].apply(lambda x: keep_date(x))
+
+data = data.dropna()
+
+# 至此data里仅保留2012第一季度到2018第一季度(2018最高只到二月份）的数据
+
+len(np.unique(ref_data['cusip']))
+
+
+def check(cusip):
+    if len(cusip) == 6:
+        return cusip
+    else:
+        return None
+
+
+len(data['cusip'].apply(lambda x: check(x)).dropna().unique())
+
+data = data.rename(columns={"date": "yyyyss"})
+
+data.to_excel('all_records_2012_2018.xlsx', index=False)
 
 
 # ### Preprocessing
@@ -213,12 +309,14 @@ def lr_coeffs(X, y):
 
 # Simply for testing
 test_X = all_bag_of_words('投资者关系活动主要内容介绍', limited=True)
-test_y = np.dot(X, np.array([1, 2] * int(59536/2))) + 3
+test_y = np.dot(test_X, np.array([1, 2] * int(59536/2))) + 3
 dummy = pd.DataFrame()
 dummy['Y'] = list(test_y)
 dummy['文档号码'] = list(data['文档号码'][:1000])
 dummy.to_excel('dummy_Y.xlsx')
 test_result = lr_coeffs(test_X, test_y)
+
+X = all_bag_of_words('投资者关系活动主要内容介绍', limited=False)
 
 
 # ### Finally...
