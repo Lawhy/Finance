@@ -24,7 +24,8 @@ import pandas as pd
 import numpy as np
 import json
 from sklearn.feature_extraction import DictVectorizer
-from sklearn.linear_model import LinearRegression
+from datetime import datetime
+from sklearn.linear_model import Ridge
 
 # ### Stop words list
 
@@ -64,14 +65,8 @@ print(data.shape)
 data = data.rename(columns={"文档号码": "ID", "投资者关系活动主要内容介绍": "content", 
                      "证券代码（请务必使用text格式 以保留代码中的0）": "cusip",
                      "日期（格式统一为xx/xx/xxxx（日月年））": "date"})
-data.head(10)
-
-ref_data = pd.read_excel('ref_data.xlsx')
-ref_data.head(10)
-
-from datetime import datetime
-
 data = data.reset_index(drop=True)
+ref_data = pd.read_excel('ref_data.xlsx')
 
 # 有部分的date格式不对，进行提前清理
 
@@ -82,16 +77,9 @@ for i, dp in data.iterrows():
         data.loc[i] = None
 
 data = data.dropna().reset_index(drop=True)
-
 data['date'] = data['date'].apply(lambda x: x.strftime("%Y%m"))
-
 data['date'] = data['date'].apply(lambda x: str(x))
-
 ref_data['cdt'] = ref_data['cdt'].apply(lambda x: str(x))
-
-np.sort(data['date'].unique())
-
-np.sort(ref_data['cdt'].unique())
 
 
 # 选取2012第一季度到2018第一季度的data并转换日期格式
@@ -119,8 +107,6 @@ yyyymm_to_yyyyss('201513')
 
 data['date'] = data['date'].apply(lambda x: yyyymm_to_yyyyss(x))
 
-np.sort(data['date'].unique())
-
 
 # +
 def keep_date(date):
@@ -134,26 +120,91 @@ np.sort(data['date'].apply(lambda x: keep_date(x)).dropna().unique())
 # -
 
 data['date'] = data['date'].apply(lambda x: keep_date(x))
-
 data = data.dropna()
 
 # 至此data里仅保留2012第一季度到2018第一季度(2018最高只到二月份）的数据
 
 len(np.unique(ref_data['cusip']))
 
-
+count = 0
+cus = []
 def check(cusip):
+    global count
     if len(cusip) == 6:
         return cusip
     else:
-        return None
+        count += 1
+        # 根据cus里的pattern对cusip进行改造
+        if cusip == '00':
+            return None
+        elif '、' in cusip or '，' in cusip or '（' in cusip:
+            cusip = cusip[:6]
+            assert cusip[:3] == '000'
+            return cusip
+        elif cusip == '00085':
+            return '000085'
+        elif 'SZ000338' in cusip:
+            return '000338'
+        elif len(cusip) > 6 and not re.findall('[1-9]', cusip[6]):
+            return cusip[:6]
+        else:
+            cus.append(cusip)
+            return None
 
 
-len(data['cusip'].apply(lambda x: check(x)).dropna().unique())
+print("Before:", len(data['cusip'].unique()), data['cusip'].shape)
+print("After:", len(data['cusip'].apply(lambda x: check(x)).dropna().unique()), data['cusip'].apply(lambda x: check(x)).dropna().shape)
+print(set(cus))
+
+data['cusip'] = data['cusip'].apply(lambda x: check(x)).dropna()
+data = data.dropna()
 
 data = data.rename(columns={"date": "yyyyss"})
 
+data['cusip'] = data['cusip'].apply(lambda x: str(x))
+
+for c in data['cusip']:
+    if not len(c) == 6:
+        print(c)
+
+data = data.rename(columns={"yyyyss": "cdt"})
 data.to_excel('all_records_2012_2018.xlsx', index=False)
+
+# 自此拿到一份date按yyss格式,cusip都为六位数的干净records,其年份为2012-2018
+
+data = pd.read_excel('all_records_2012_2018.xlsx', dtype= {'ID': str, 'content': str, 'cusip': str, 'cdt': str})
+data.head(5)
+
+name_Y = 'dtd'  # specify which Y value to take out
+ref_data = pd.read_excel('ref_data.xlsx', dtype={'cdt': str, 'cusip': str, name_Y: float})[['cdt', 'cusip', name_Y]]
+ref_data['cusip'] = ref_data['cusip'].apply(lambda x: x[:6])
+ref_data = ref_data.dropna()
+ref_data = ref_data.reset_index(drop=True)
+ref_data.head(5)
+
+
+# +
+def find_content(cdt, cusip):
+    global data
+    related = data[(data['cdt'] == cdt) & (data['cusip'] == cusip)]
+    content = ''.join(list(related['content']))
+    if content:
+        return content
+    else:
+        return None
+
+find_content('201504', '000338')[:100]
+# -
+
+contents = []
+for i, dp in ref_data.iterrows():
+    contents.append(find_content(dp['cdt'], dp['cusip']))
+    print('[{}]'.format(i), 'finished.')
+
+ref_data['content'] = contents
+ref_data = ref_data.dropna().reset_index(drop=True)
+
+Y = ref_data['dtd']
 
 
 # ### Preprocessing
@@ -270,15 +321,15 @@ def gen_bag_of_words(doc):
     global vec
     return vec.transform(gen_freq_dist(doc)['freq_dist']).toarray()
 
-def all_bag_of_words(col_name_for_docs, limited=False):
-    global vec, data
+def all_bag_of_words(data, col_name_for_docs, limited=False):
+    global vec
     dimension = len(vec.get_feature_names())
     count = 0
     init = True
     X = []
     for index, data_point in data.iterrows():
         # 文档号码如果不存在将以下print注释，或者替换成另外指明数据的列
-        print('[' + str(count) + '] Transforming document ' + str(data_point['文档号码']) + '...')
+        print('[' + str(count) + '] Transforming document...')
         # Initialise X with first document
         if init:
             X = gen_bag_of_words(data_point[col_name_for_docs])
@@ -297,8 +348,8 @@ def all_bag_of_words(col_name_for_docs, limited=False):
 def lr_coeffs(X, y):
     global vec
     features = list(vec.get_feature_names())
-    reg = LinearRegression().fit(X, y)
-    coeffs = list(reg.coef_)
+    clf = Ridge(alpha=1.0).fit(X, y)
+    coeffs = list(clf.coef_)
     result = pd.DataFrame(columns=['Feature', 'Coefficients'])
     result['Feature'] = features
     result['Coefficients'] = coeffs
@@ -316,7 +367,7 @@ dummy['文档号码'] = list(data['文档号码'][:1000])
 dummy.to_excel('dummy_Y.xlsx')
 test_result = lr_coeffs(test_X, test_y)
 
-X = all_bag_of_words('投资者关系活动主要内容介绍', limited=False)
+X = all_bag_of_words(ref_data, 'content', limited=False)
 
 
 # ### Finally...
@@ -341,6 +392,8 @@ doc_ID_name = '请替换文档ID的名称' # e.g. 文档号码
 y_name = '请替换Y值的名称' 
 y = load_Y(Y_path, doc_ID_name, Y_name)
 
-result = lr_coeffs(X, y)
+# 如果之前已经拿到Y 就直接使用
+
+result = lr_coeffs(X, Y)
 # 储存结果
 result.to_excel('word_ranking.xlsx')
